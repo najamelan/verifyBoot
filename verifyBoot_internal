@@ -1,0 +1,223 @@
+#!/bin/bash
+#
+# Verify boot version:
+
+version=2012-02-03
+echo -e "\n\tverifyBoot version $version\n\t-----------------------------\n"
+
+# This script is meant to allow you to check a hash on your boot partition to verify it hasn't changed.
+# When carrying your boot partition on a usb stick that you always have on you, this will allow you to
+# be sure that you have a safe system on an encrypted computer after the usb stick has been taken of you
+# such as in the case of an arrestation, or if you forgot it somewhere.
+#
+# This script makes a sha256 hash of the MBR of your choice combined with an entire partition after which it
+# calculates hashes for each file in the partition individually as well as of the MBR, the partition bootsector
+# and the Ext superblock. Note that no other filesystems are supported. This will allow you to see where
+# locate changes if the general hash has changed.
+#
+# To find the uuid of your partition, use the command «blkid»
+
+# evocation syntax and sample evocation:
+# ./verifyBoot_internal uuid_of_partition_to_check          [mountpoint  [MBRlocation]]
+# ./verifyBoot_internal "THE UUID OF YOUR BOOT PARTITION"   "/boot"     "/dev/sdb"
+#
+# In the example above the script will mount the partition on /boot in readonly to check files
+# If you don't provide an MBR location, the MBR of the device on which the partition lives will be used
+# If you don't provide a mount point, /media/tmp_[Partition Label] will be used
+# Note that your partition will change everytime you mount not readonly
+
+# It is recommended to run this script from another script so you are sure it gets called exactly
+# with the same parameters so you can compare the output between runs
+
+# Command line arguments:
+uuidToCheck="$1"
+mountPoint="$2"
+MBRlocation="$3"
+
+# global vars:
+weMountedBoot=false
+weCreatedMountPoint=false
+
+# Constants
+RED_TEXT='\e[1;31m'
+DEFAULT_COLOR='\e[0m'
+
+
+# digest wrapper function. Allows us to strip (stdin)= from dgst output
+function digest()
+{
+   openssl dgst -sha256 |
+
+   # some versions of openssl would add an annoying '(stdin)= ' at the beginning
+   sed -e 's/^(stdin)= //'
+}
+
+
+# function to die in case or failures
+function die()
+{
+   echo -e $RED_TEXT"$0: FATAL ERROR:" "$*"$DEFAULT_COLOR >&2
+   exit 1
+}
+
+
+# clean the blkid cache, see «man blkid»
+blkid -g
+
+
+# check if the uuid exists
+if ! blkid -U "$uuidToCheck" > /dev/null; then
+
+   die "UUID: «$uuidToCheck» was not found...\nPlease make sure the partition is present on the system. It should not be mounted, but in case you did a «safely remove drive» on a usb drive, unplug it in again.\n" >&2
+fi
+
+
+# check if the mount location is given, otherwise use /media/_tmp[PARTITION LABEL]
+if ! test "$mountPoint"; then
+
+   mountPoint="/media/_verifyBoot_`blkid -t UUID=$uuidToCheck -s LABEL -o value`"
+fi
+
+
+# check if an MBR location is given, otherwise use the device on which the partition lives
+if ! test "$MBRlocation"; then
+
+   MBRlocation=`blkid -U $uuidToCheck | sed s/[0-9]$//`
+fi
+
+
+# check if the MBRlocation is a block device
+if ! test -b "$MBRlocation"; then
+
+   die "Location for Master Boot Record: «$MBRlocation» is not a block device. Exiting..."
+fi
+
+
+# check if the partition is already mounted
+# TODO bootline could be multiple lines, we don't deal with that
+bootline=`mount | grep \`blkid -U "$uuidToCheck"\``
+
+# if bootline has zero length, the partition is not mounted
+if test -z "$bootline"; then
+
+   # if the mount point does not exist, try to create it
+   if ! test -a "$mountPoint" ; then
+
+      mkdir "$mountPoint" || die "could not create mountPoint: $mountPoint"
+      weCreatedMountPoint=true
+
+   # else if it exists but is not a directory print error and die
+   elif ! test -d "$mountPoint"; then
+
+      die "The mount point given is an existing file which is not a directory. Exiting..."
+
+   # else if mount point is already in use, print error and die
+   elif mount | grep " on $mountPoint "; then
+
+      die "The mount point given is already in use. Exiting..."
+
+   # else if it is a directory, but it is not empty give warning
+   elif test -n "`ls \"$mountPoint\"`"; then
+
+      echo -e "${RED_TEXT}$0: Warning: The mountpoint «$mountPoint» is a directory, but it is not empty. This is normally harmless. Mounting over the existing files should hide them.$DEFAULT_COLOR " >&2
+
+   fi
+
+   # we should now be confident that the mountpoint exists, is a directory is not yet in use
+   mount -r -U "$uuidToCheck" "$mountPoint" || die "failed to mount $uuidToCheck"
+   weMountedBoot=true
+
+
+# else, the partition is mounted. If the partition is mounted read-write, print errormessage
+elif echo "$bootline" | grep "(rw" > /dev/null; then
+
+   # figure out where it is mounted
+   # This regex is ambigous on a mount point like "/media/test type", but somehow it performs fine
+   currentMountPosition=`echo "$bootline" | sed -r 's/.+ on (.+) type .+/\1/'`
+
+	# TODO: ask the user for confirmation to make sure they understand. The output of this command tells us if it is ro or rw. Partitions can be mounted on multiple places...
+	echo -e "${RED_TEXT}$0: Warning: The partition with uuid: «$uuidToCheck» is currently mounted at «$currentMountPosition» and it isn't in readonly mode.$DEFAULT_COLOR\nThis might invalidate the checksums since information is written to the Ext superblock of the partition everytime it is booted. For this script to be usefull you should run it and store results every time AFTER you have mounted your boot partition except when it was mounted in read-only." >&2
+fi
+
+
+# output the the uuid of the partition we are checking
+echo -e "\t# Checking partition: $uuidToCheck \n"
+
+# concatenate the MBR and the partition and hash it
+echo  `
+{
+	dd if=$MBRlocation bs=440 count=1;
+	dd if=/dev/disk/by-uuid/"$uuidToCheck" bs=4096;
+} \
+ 2>/dev/null | digest` "$uuidToCheck & MBR.bootcode on $MBRlocation"
+
+
+
+# Files part
+# This will allow the user to check which part of the partition has changed in case of changes.
+
+# output the the uuid of the partition we are checking
+echo -e "\n\n\t# Checking files on partition:" $uuidToCheck "\n"
+
+
+# print a hash for the MBR
+echo  `dd if=$MBRlocation bs=440 count=1 2>/dev/null | digest` \
+      "MBR.bootcode on $MBRlocation (offset: 0 size: 440b)"
+
+# print a hash for the MBR disk signature
+echo  `dd if=$MBRlocation bs=1 count=6 skip=440 2>/dev/null | digest` \
+      "MBR.DiskSignature + 2 null bytes on $MBRlocation (offset: 440 size: 6b)"
+
+# print a hash for the MBR partition table
+echo  `dd if=$MBRlocation bs=1 count=64 skip=446 2>/dev/null | digest` \
+      "MBR.partitionTable on $MBRlocation (offset: 446 size: 64b)"
+
+
+
+# print a hash for the bootsector of the partition
+echo  `dd if=/dev/disk/by-uuid/"$uuidToCheck" bs=512 count=1 2>/dev/null | digest` \
+      "Partition boot sector (offset: 0 size: 512b)"
+
+# print a hash for the superblock of the partition
+if [[ `blkid -t UUID="$uuidToCheck" -s TYPE -o value` == ext? ]] ; then
+
+   echo  `dd if=/dev/disk/by-uuid/"$uuidToCheck" bs=512 count=2 skip=2 2>/dev/null | digest` \
+      "Ext superblock (offset: 1024 size: 1Kb)"
+fi
+
+
+
+# print a hash for every file found in partition
+IFS=$'\n\r'
+for fileName in `find "$mountPoint" -type f`
+   do
+      echo -n `dd if="$fileName" 2>/dev/null | digest`
+      echo " "${fileName#"$mountPoint"} # it even works if filename or mountpoint contain «#»
+   done
+IFS=$' \t\n\r'
+
+
+# unmount the partition if we mounted it
+#
+# TODO report bug in mount
+# umount: /media/te\st \#type#\134: not found
+# ./verifyBoot_internal: FATAL ERROR: failed to unmount ...
+# the name of the directory was : «te\st \#type#\»
+#
+
+if $weMountedBoot; then
+
+   umount `blkid -U "$uuidToCheck"` || die "failed to unmount «$uuidToCheck»"
+
+fi
+
+
+# remove mountpoint if we created it
+if $weCreatedMountPoint; then
+
+   rmdir "$mountPoint" || die "failed to delete mountpoint: «$mountPoint»"
+
+fi
+
+exit 0
+

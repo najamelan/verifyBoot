@@ -1,0 +1,49 @@
+#!/bin/bash
+#
+
+version=2012-02-03
+echo -e "\n\tverifyBoot version $version\n\t-----------------------------\n"
+
+# This is a sample script of how to invoke verifyBoot_internal.
+#
+# This part is used to call the actual working script with command line arguments for greater flexibility
+# You can call verifyBoot_internal directly if you want. Having this in a script can allow you to easily
+# check multiple partitions or to have other actions performed like signing your results with pgp etc...
+
+
+# Configuration section
+#----------------------
+
+# the uuid of the drive to check. Mandatory. Use the command blkid to find the uuid of your partition
+# on ext the first superblock will be hashed separately, but on other filesystems the master file tables will be ignored
+uuidToCheck='PUT YOUR UUID HERE'
+
+# mountpoint where the partition will be mounted in readonly to make hashes of files. Optional
+# defaults to «/media/_verifyBoot_[PARTITION LABEL]»
+mountPoint=''
+
+# the location of the MBR to check. Optional
+# defaults to the device the partition lives on
+MBRlocation=''
+
+# the output file; this can be an absolute or relative path, but make sure the directory exists
+# it won't be created
+outputFile="bootPartition.SHA256_`date +%F\-%Hh%Mm%Ss`.txt"
+
+
+# Function section
+#-----------------
+
+# sign the obtained file with my default pgp key and delete the unsigned file if successful
+function sign()
+{
+	gpg --clearsign --armor "$outputFile" && rm "$outputFile"
+}
+
+
+# Run section
+#------------
+
+# run the script with root privileges so it can mount partitions
+# if succesful sign the outputfile
+sudo ./verifyBoot_internal "$uuidToCheck" "$mountPoint" "$MBRlocation" >> "$outputFile" && sign
