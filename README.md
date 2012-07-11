@@ -1,8 +1,8 @@
 verifyBoot manual v.2012-02-03
 ==============================
 
-home:                      https://github.com/najamelan/verifyBoot
-please report any bugs at: https://github.com/najamelan/verifyBoot/issues
+- home:                      https://github.com/najamelan/verifyBoot
+- please report any bugs at: https://github.com/najamelan/verifyBoot/issues
 
 Introduction
 ------------
@@ -28,16 +28,16 @@ After you have been separated from your boot medium you should verify that it ha
 
 Obtaining a safe system can be non-trivial for people with limited geek-connectivity. If it might be a little help this are the pgp fingerprints of some signing keys:
 
-Debian CD signing key          -- DF9B 9C49 EAA9 2984 3258 9D76 DA87 E80D 6294 BE9B
-Tails developers - signing key -- 0D24 B36A A9A2 A651 7878 7645 1202 821C BE2C D9C1
+- Debian CD signing key          -- DF9B 9C49 EAA9 2984 3258 9D76 DA87 E80D 6294 BE9B
+- Tails developers - signing key -- 0D24 B36A A9A2 A651 7878 7645 1202 821C BE2C D9C1
 
 Note that this is not a secure source of the above fingerprints, but it may be an extra source permitting a little bit more means of verification as long as you obtain this document through a different channel as other sources for the keys or their fingerprints.
 
 Note that it could still be possible for an attacker to use bios or embedded control chip code or hardware firmware to hack into a system. See the following for some examples:
 
-https://en.wikipedia.org/wiki/Rootkit
-http://arstechnica.com/security/news/2009/03/researchers-demonstrate-bios-level-rootkit-attack.ars
-https://www.zdnet.com/blog/security/researchers-find-insecure-bios-rootkit-pre-loaded-in-laptops/3828
+- https://en.wikipedia.org/wiki/Rootkit
+- http://arstechnica.com/security/news/2009/03/researchers-demonstrate-bios-level-rootkit-attack.ars
+- https://www.zdnet.com/blog/security/researchers-find-insecure-bios-rootkit-pre-loaded-in-laptops/3828
 
 
 Also all risks of physical key-loggers, video-surveillance, network breach, etc remain.
@@ -58,13 +58,13 @@ Dependencies
 ------------
 A standard Unix system should already have all that is needed:
 
-bash
-dd
-mount
-grep
-blkid
-sed
-openssl dgst
+- bash
+- dd
+- mount
+- grep
+- blkid
+- sed
+- openssl dgst
 
 Usage
 -----
